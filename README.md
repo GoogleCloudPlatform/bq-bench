@@ -3,8 +3,7 @@
 This tool allows you to do timed SQL query runs against Google BigQuery. It is
 bundled with a set of TPC-DS power run queries.
 
-All bundled queries are generated from the `dsqgen` (v3.2.0) tool by the (TPC)
-[https://tpc.org], who is the copyright owner of the tools and query templates.
+All bundled queries are generated from the `dsqgen` (v3.2.0) tool by the [TPC](https://tpc.org), who is the copyright owner of the tools and query templates.
 
 ### Installation
 

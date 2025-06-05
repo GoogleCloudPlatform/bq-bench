@@ -1,0 +1,2 @@
+scale: 10T
+rngseed: 1745522630

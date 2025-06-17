@@ -86,7 +86,7 @@ Following is the general format of the comment header: ```/* run_id=<run_id>, ru
 
 * `run_id`: A unique string identifier for the benchmark run
 * `run_mode`: Either "warmup" or "test", representing the warmup and the test iterations respectively
-* `iter`: The iteration index of the current query execution iteration. This is a 1-based number (value started from 1).
+* `iter`: The iteration index of the current query execution iteration. This is a 1-based number (value starts from 1).
 * `query`: The name of the query that is executed. This is the name of the file in the query directory (exluding the file extension)
 * `run_index`: The position of the query currently being executed. This is a 1-based number.
 

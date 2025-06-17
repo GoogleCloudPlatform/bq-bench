@@ -77,3 +77,28 @@ Example:
 ```bash
 bq-bench --project_id=<test_project> --default_dataset=bigquery-public-data.tpc_ds_10t --query_dir=./third_party/queries/tpcds --report_dir=./reports
 ```
+
+### Executed Query Analysis
+
+The information on the executed queries are available in a CSV file in the reporting directory (if provided). This will contain the per-query statistics, and their job IDs. The executed SQL text contains a comment header, which can be used to generally parse or filter the queries that has been executed in the test project.
+
+Following is the general format of the comment header: ```/* run_id=<run_id>, run_mode=<run_mode>, iter=<iter>, query=<query>, run_index=<run_index> */```
+
+* `run_id`: A unique string identifier for the benchmark run
+* `run_mode`: Either "warmup" or "test", representing the warmup and the test iterations respectively
+* `iter`: The iteration index of the current query execution iteration. This is a 1-based number (value started from 1).
+* `query`: The name of the query that is executed. This is the name of the file in the query directory (exluding the file extension)
+* `run_index`: The position of the query currently being executed. This is a 1-based number.
+
+Sample query for looking up test query information for a specific run from INFORMATION_SCHEMA:
+
+```sql
+SELECT
+  *
+FROM
+  `<project>`.`region-<region>`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
+WHERE
+  creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 DAY)
+  AND query LIKE "%run_id=<run_id>, run_mode=test";
+```
+

@@ -3,22 +3,45 @@
 This tool allows you to do timed SQL query runs against Google BigQuery. It is
 bundled with a set of TPC-DS power run queries.
 
-All bundled queries are generated from the `dsqgen` (v3.2.0) tool by the [TPC](https://tpc.org), who is the copyright owner of the tools and query templates.
+All bundled queries are generated from the `dsqgen` (v3.2.0) tool by the [TPC]
+(https://tpc.org), who is the copyright owner of the tools and query templates.
+
+### Prerequisites
+
+* [Python](https://www.python.org/downloads/) v3.4 or later.
+* Required IAM user roles:
+  - [BigQuery Job User](https://cloud.google.com/bigquery/docs/access-control#bigquery.jobUser) (roles/bigquery.jobUser)
+  - [BigQuery Read Session User](https://cloud.google.com/bigquery/docs/access-control#bigquery.readSessionUser) (roles/bigquery.readSessionUser)
 
 ### Installation
+
+* Check-out the `bq-bench` code:
 
 ```bash
 git clone https://github.com/GoogleCloudPlatform/bq-bench
 cd bq-bench
+```
+
+* Optional: create an isolated Python virtual environment (https://docs.python.org/3/library/venv.html):
+```bash
 python3 -m venv venv
 source venv/bin/activate
+```
 
+* Build the code and install `bqbench`:
+```bash
 pip install -e .
 ```
 
 ### BigQuery client authentication
-```
+
+Initialize gcloud command-line tooling:
+```bash
 gcloud init
+```
+
+Acquire new user credentials:
+```bash
 gcloud auth application-default login
 ```
 

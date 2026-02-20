@@ -15,6 +15,7 @@
 """A tool for query benchmarking in BigQuery."""
 
 import argparse
+import collections
 from collections.abc import Sequence
 import csv
 import dataclasses
@@ -34,7 +35,7 @@ class Query:
   sql: str
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass
 class QueryExecution:
   """Represents a single execution of a query."""
 
@@ -108,12 +109,9 @@ def _add_query_identification_comment(
 def _execute_query(
     run_id: str,
     client: bigquery.Client,
-    query: Query,
-    iteration_index: int,
-    run_index: int,
-    run_mode: str,
+    query_execution: QueryExecution,
     store_results: bool,
-) -> QueryExecution:
+) -> None:
   """Executes a query and returns the results."""
   start_time = datetime.datetime.now()
   start_time_monotonic = time.monotonic()
@@ -123,7 +121,7 @@ def _execute_query(
   result_extraction_time = 0.0
   num_rows = 0
   nbytes = 0
-  for sql in query.sql.split(";"):
+  for sql in query_execution.query.sql.split(";"):
     sql = sql.strip()
     if not sql:
       continue
@@ -131,10 +129,10 @@ def _execute_query(
         _add_query_identification_comment(
             run_id,
             sql,
-            query.name,
-            iteration_index,
-            run_index,
-            run_mode,
+            query_execution.query.name,
+            query_execution.iteration_index,
+            query_execution.run_index,
+            query_execution.run_mode,
             script_index,
         ),
         page_size=1000,
@@ -150,20 +148,60 @@ def _execute_query(
     result_extraction_time += time.monotonic() - result_extraction_start_time
     script_index += 1
   end_time_monotonic = time.monotonic()
-  query_execution = QueryExecution(
-      query=query,
-      start_time=start_time,
-      duration_ms=(end_time_monotonic - start_time_monotonic) * 1000.0,
-      result_extraction_time_ms=result_extraction_time * 1000.0,
-      results=results,
-      iteration_index=iteration_index,
-      run_index=run_index,
-      run_mode=run_mode,
-      job_id=",".join(job_ids),
-      result_row_count=num_rows,
-      result_size_bytes=nbytes,
-  )
-  return query_execution
+  query_execution.start_time = start_time
+  query_execution.duration_ms = (
+      end_time_monotonic - start_time_monotonic
+  ) * 1000.0
+  query_execution.result_extraction_time_ms = result_extraction_time * 1000.0
+  query_execution.results = results
+  query_execution.job_id = ",".join(job_ids)
+  query_execution.result_row_count = num_rows
+  query_execution.result_size_bytes = nbytes
+
+
+def _generate_query_executions(
+    run_mode: str,
+    iteration_count: int,
+    queries: Sequence[Query],
+    interleave_query_iterations: bool,
+) -> Sequence[QueryExecution]:
+  """Generates query executions for the given query/strategy."""
+  query_executions = []
+  if interleave_query_iterations:
+    for iteration_index in range(1, iteration_count + 1):
+      for run_index, query in enumerate(queries, start=1):
+        query_execution = QueryExecution(
+            query=query,
+            start_time=None,
+            duration_ms=0,
+            result_extraction_time_ms=0,
+            results=[],
+            iteration_index=iteration_index,
+            run_index=run_index,
+            run_mode=run_mode,
+            job_id=None,
+            result_row_count=0,
+            result_size_bytes=0,
+        )
+        query_executions.append(query_execution)
+  else:
+    for run_index, query in enumerate(queries, start=1):
+      for iteration_index in range(1, iteration_count + 1):
+        query_execution = QueryExecution(
+            query=query,
+            start_time=None,
+            duration_ms=0,
+            result_extraction_time_ms=0,
+            results=[],
+            iteration_index=iteration_index,
+            run_index=run_index,
+            run_mode=run_mode,
+            job_id=None,
+            result_row_count=0,
+            result_size_bytes=0,
+        )
+        query_executions.append(query_execution)
+  return query_executions
 
 
 def _execute_queries(
@@ -171,9 +209,10 @@ def _execute_queries(
     project_id: str,
     default_dataset: bigquery.dataset.DatasetReference,
     queries: Sequence[Query],
-    iteration_index: int,
+    iteration_count: int,
     run_mode: str,
     store_results: bool,
+    interleave_query_iterations: bool,
 ) -> Sequence[QueryExecution]:
   """Executes queries and returns the results."""
   query_config = bigquery.job.QueryJobConfig(
@@ -184,15 +223,14 @@ def _execute_queries(
   client = bigquery.Client(
       project=project_id, default_query_job_config=query_config
   )
-  query_executions = []
-  for run_index, query in enumerate(queries, start=1):
-    query_execution = _execute_query(
+  query_executions = _generate_query_executions(
+      run_mode, iteration_count, queries, interleave_query_iterations
+  )
+  for query_execution in query_executions:
+    _execute_query(
         run_id,
         client,
-        query,
-        iteration_index,
-        run_index,
-        run_mode,
+        query_execution,
         store_results,
     )
     logging.info(
@@ -208,7 +246,6 @@ def _execute_queries(
         query_execution.result_row_count,
         query_execution.result_size_bytes,
     )
-    query_executions.append(query_execution)
   return query_executions
 
 
@@ -301,24 +338,20 @@ def _execute_warmup_iters(
     default_dataset: bigquery.dataset.DatasetReference,
     queries: Sequence[Query],
     warmup_iters: int,
-) -> float:
+    interleave_query_iterations: bool,
+) -> Sequence[QueryExecution]:
   """Executes warmup runs."""
-  total_time = 0.0
-  for i in range(1, warmup_iters + 1):
-    logging.info("Running warmup execution %d out of %d...", i, warmup_iters)
-    start_time = time.monotonic()
-    _execute_queries(
-        run_id,
-        project_id,
-        default_dataset,
-        queries,
-        i,
-        run_mode="warmup",
-        store_results=False,
-    )
-    end_time = time.monotonic()
-    total_time += end_time - start_time
-  return total_time
+  query_executions = _execute_queries(
+      run_id,
+      project_id,
+      default_dataset,
+      queries,
+      warmup_iters,
+      "warmup",
+      store_results=False,
+      interleave_query_iterations=interleave_query_iterations,
+  )
+  return query_executions
 
 
 def _execute_test_iters(
@@ -328,27 +361,58 @@ def _execute_test_iters(
     queries: Sequence[Query],
     test_iters: int,
     store_results: bool,
-) -> (Sequence[QueryExecution], [float]):
+    interleave_query_iterations: bool,
+) -> Sequence[QueryExecution]:
   """Executes test runs."""
-  query_executions = []
-  execution_times = []
-  for i in range(1, test_iters + 1):
-    logging.info("Running test execution %d out of %d...", i, test_iters)
-    start_time = time.monotonic()
-    query_executions.extend(
-        _execute_queries(
-            run_id,
-            project_id,
-            default_dataset,
-            queries,
-            i,
-            run_mode="test",
-            store_results=store_results,
-        )
-    )
-    end_time = time.monotonic()
-    execution_times.append(end_time - start_time)
-  return (query_executions, execution_times)
+  query_executions = _execute_queries(
+      run_id,
+      project_id,
+      default_dataset,
+      queries,
+      test_iters,
+      "test",
+      store_results,
+      interleave_query_iterations,
+  )
+  return query_executions
+
+
+def _calculate_statistics(
+    query_executions: Sequence[QueryExecution],
+) -> tuple[float, float]:
+  """Calculates statistics for the query executions."""
+  iteration_durations = collections.defaultdict(list)
+  for qe in query_executions:
+    iteration_durations[qe.iteration_index].append(qe.duration_ms)
+  iteration_sums = [sum(v) for v in iteration_durations.values()]
+  return (statistics.mean(iteration_sums), statistics.median(iteration_sums))
+
+
+def _process_results(
+    run_id: str,
+    report_dir: str,
+    query_results_dir: str,
+    store_results: bool,
+    warmup_query_executions: Sequence[QueryExecution],
+    test_query_executions: Sequence[QueryExecution],
+):
+  """Processes the results of the query executions."""
+  total_warmup_time = (
+      sum(qe.duration_ms for qe in warmup_query_executions) / 1000.0
+  )
+  total_test_time = sum(qe.duration_ms for qe in test_query_executions) / 1000.0
+  logging.info("Total warmup run time: %.02fs", total_warmup_time)
+  logging.info("Total test run time: %.02fs", total_test_time)
+  mean_time, median_time = _calculate_statistics(test_query_executions)
+  logging.info(
+      "Test run average times; mean: %.02fs median: %.02fs",
+      mean_time,
+      median_time,
+  )
+  logging.info("Run ID: %s", run_id)
+  _export_report(run_id, test_query_executions, report_dir)
+  if store_results:
+    _export_query_result_data(run_id, test_query_executions, query_results_dir)
 
 
 def _run_queries(
@@ -360,6 +424,7 @@ def _run_queries(
     query_results_dir: str,
     warmup_iters: int = 1,
     test_iters: int = 1,
+    interleave_query_iterations: bool = False,
 ) -> None:
   """Runs queries and exports results to a CSV file."""
   store_results = bool(query_results_dir)
@@ -373,23 +438,31 @@ def _run_queries(
       query_results_dir if store_results else "N/A",
   )
   queries = _load_queries(query_dir)
-  total_warmup_time = _execute_warmup_iters(
-      run_id, project_id, default_dataset, queries, warmup_iters
+  warmup_query_executions = _execute_warmup_iters(
+      run_id,
+      project_id,
+      default_dataset,
+      queries,
+      warmup_iters,
+      interleave_query_iterations,
   )
-  query_executions, test_exec_times = _execute_test_iters(
-      run_id, project_id, default_dataset, queries, test_iters, store_results
+  test_query_executions = _execute_test_iters(
+      run_id,
+      project_id,
+      default_dataset,
+      queries,
+      test_iters,
+      store_results,
+      interleave_query_iterations,
   )
-  logging.info("Total warmup run time: %.02fs", total_warmup_time)
-  logging.info("Total test run time: %.02fs", sum(test_exec_times))
-  logging.info(
-      "Test run average times; mean: %.02fs median: %.02fs",
-      statistics.mean(test_exec_times),
-      statistics.median(test_exec_times),
+  _process_results(
+      run_id,
+      report_dir,
+      query_results_dir,
+      store_results,
+      warmup_query_executions,
+      test_query_executions,
   )
-  logging.info("Run ID: %s", run_id)
-  _export_report(run_id, query_executions, report_dir)
-  if store_results:
-    _export_query_result_data(run_id, query_executions, query_results_dir)
 
 
 def main() -> None:
@@ -439,6 +512,16 @@ def main() -> None:
       default=1,
       help="Number of test iterations to execute [default=1].",
   )
+  parser.add_argument(
+      "--interleave_query_iterations",
+      action="store_true",
+      help=(
+          "If query iterations should be interleaved or executed in sequence;"
+          " i.e. interleaved: query1-iter1, query2-iter1, ... query1-iter2,"
+          " query2-iter2, ...  - sequencial: query1-iter1, query1-iter2, ..."
+          " query2-iter1, query2-iter2, ... [default=false (sequencial)]"
+      ),
+  )
   args = parser.parse_args()
 
   logging.basicConfig(
@@ -473,6 +556,7 @@ def main() -> None:
       args.query_results_dir,
       args.warmup_iters,
       args.test_iters,
+      args.interleave_query_iterations,
   )
   logging.info("Finished.")
 

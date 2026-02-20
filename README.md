@@ -51,7 +51,7 @@ More information on BigQuery client authentication can be found [here](https://c
 Usage:
 ```bash
 bq-bench -h
-usage: bq-bench [-h] --project_id PROJECT_ID --default_dataset DEFAULT_DATASET [--query_dir QUERY_DIR] [--report_dir REPORT_DIR] [--query_results_dir QUERY_RESULTS_DIR] [--warmup_iters WARMUP_ITERS] [--test_iters TEST_ITERS]
+usage: bq-bench [-h] --project_id PROJECT_ID --default_dataset DEFAULT_DATASET [--query_dir QUERY_DIR] [--report_dir REPORT_DIR] [--query_results_dir QUERY_RESULTS_DIR] [--warmup_iters WARMUP_ITERS] [--test_iters TEST_ITERS] [--interleave_query_iterations]
 
 Run BigQuery queries.
 
@@ -71,6 +71,8 @@ options:
                         Number of warmup iterations to execute before the test run [default=1].
   --test_iters TEST_ITERS
                         Number of test iterations to execute [default=1].
+  --interleave_query_iterations
+                        If query iterations should be interleaved or executed in sequence; i.e. interleaved: query1-iter1, query2-iter1, ... query1-iter2, query2-iter2, ... - sequencial: query1-iter1, query1-iter2, ... query2-iter1, query2-iter2, ... [default=false (sequencial)]
 ```
 
 Example:

@@ -379,13 +379,22 @@ def _execute_test_iters(
 
 def _calculate_statistics(
     query_executions: Sequence[QueryExecution],
+    interleave_query_iterations: bool,
 ) -> tuple[float, float]:
   """Calculates statistics for the query executions."""
-  iteration_durations = collections.defaultdict(list)
-  for qe in query_executions:
-    iteration_durations[qe.iteration_index].append(qe.duration_ms)
-  iteration_sums = [sum(v) for v in iteration_durations.values()]
-  return (statistics.mean(iteration_sums), statistics.median(iteration_sums))
+  if interleave_query_iterations:
+    query_durations = collections.defaultdict(list)
+    for qe in query_executions:
+      query_durations[qe.query.name].append(qe.duration_ms)
+    query_means = [statistics.mean(v) for v in query_durations.values()]
+    query_medians = [statistics.median(v) for v in query_durations.values()]
+    return (sum(query_means), sum(query_medians))
+  else:
+    iteration_durations = collections.defaultdict(list)
+    for qe in query_executions:
+      iteration_durations[qe.iteration_index].append(qe.duration_ms)
+    iteration_sums = [sum(v) for v in iteration_durations.values()]
+    return (statistics.mean(iteration_sums), statistics.median(iteration_sums))
 
 
 def _process_results(
@@ -395,6 +404,7 @@ def _process_results(
     store_results: bool,
     warmup_query_executions: Sequence[QueryExecution],
     test_query_executions: Sequence[QueryExecution],
+    interleave_query_iterations: bool,
 ):
   """Processes the results of the query executions."""
   total_warmup_time = (
@@ -403,9 +413,11 @@ def _process_results(
   total_test_time = sum(qe.duration_ms for qe in test_query_executions) / 1000.0
   logging.info("Total warmup run time: %.02fs", total_warmup_time)
   logging.info("Total test run time: %.02fs", total_test_time)
-  mean_time, median_time = _calculate_statistics(test_query_executions)
+  mean_time, median_time = _calculate_statistics(
+      test_query_executions, interleave_query_iterations
+  )
   logging.info(
-      "Test run average times; mean: %.02fs median: %.02fs",
+      "Test run average times; mean-based: %.02fs median-based: %.02fs",
       mean_time,
       median_time,
   )
@@ -462,6 +474,7 @@ def _run_queries(
       store_results,
       warmup_query_executions,
       test_query_executions,
+      interleave_query_iterations,
   )
 
 

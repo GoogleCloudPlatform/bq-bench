@@ -50,6 +50,7 @@ class QueryExecution:
   job_id: str
   result_row_count: int
   result_size_bytes: int
+  total_slot_millis: int
 
 
 def _load_query_ordering(query_dir: str) -> Sequence[str] | None:
@@ -121,6 +122,7 @@ def _execute_query(
   result_extraction_time = 0.0
   num_rows = 0
   nbytes = 0
+  total_slot_millis = 0
   for sql in query_execution.query.sql.split(";"):
     sql = sql.strip()
     if not sql:
@@ -139,6 +141,7 @@ def _execute_query(
     )
     job_id = f"{result.project}:{result.location}.{result.job_id}"
     job_ids.append(job_id)
+    total_slot_millis += result.slot_millis
     result_extraction_start_time = time.monotonic()
     table_data = result.to_arrow()
     num_rows += table_data.num_rows
@@ -157,6 +160,7 @@ def _execute_query(
   query_execution.job_id = ",".join(job_ids)
   query_execution.result_row_count = num_rows
   query_execution.result_size_bytes = nbytes
+  query_execution.total_slot_millis = total_slot_millis
 
 
 def _generate_query_executions(
@@ -182,6 +186,7 @@ def _generate_query_executions(
             job_id=None,
             result_row_count=0,
             result_size_bytes=0,
+            total_slot_millis=0,
         )
         query_executions.append(query_execution)
   else:
@@ -199,6 +204,7 @@ def _generate_query_executions(
             job_id=None,
             result_row_count=0,
             result_size_bytes=0,
+            total_slot_millis=0,
         )
         query_executions.append(query_execution)
   return query_executions
@@ -264,6 +270,7 @@ def _export_to_csv(
         "iteration_index",
         "run_index",
         "job_id",
+        "total_slot_millis",
     ]
     writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
@@ -281,6 +288,7 @@ def _export_to_csv(
           "iteration_index": query_execution.iteration_index,
           "run_index": query_execution.run_index,
           "job_id": query_execution.job_id,
+          "total_slot_millis": query_execution.total_slot_millis,
       })
 
 

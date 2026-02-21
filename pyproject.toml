@@ -16,6 +16,7 @@ classifiers = [
 dependencies = [
     "google-cloud-bigquery",
     "google-cloud-bigquery-storage",
+    "gspread",
     "pyarrow",
 ]
 license = {file = "LICENSE"}

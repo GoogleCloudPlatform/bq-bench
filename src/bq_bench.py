@@ -24,7 +24,12 @@ import logging
 import os
 import statistics
 import time
+
+import google.auth
+from google.auth import exceptions as google_auth_exceptions
 from google.cloud import bigquery
+import gspread
+from gspread import exceptions as gspread_exceptions
 import pyarrow
 from pyarrow import csv as pyarrow_csv
 
@@ -159,9 +164,11 @@ def _execute_query(
   end_time_monotonic = time.monotonic()
   query_execution.start_time = start_time
   query_execution.duration_ms = (
-      end_time_monotonic - start_time_monotonic
-  ) * 1000.0
-  query_execution.result_extraction_time_ms = result_extraction_time * 1000.0
+      round((end_time_monotonic - start_time_monotonic) * 1000.0)
+  )
+  query_execution.result_extraction_time_ms = round(
+      result_extraction_time * 1000.0
+  )
   query_execution.results = results
   query_execution.job_id = ",".join(job_ids)
   query_execution.result_row_count = num_rows
@@ -249,7 +256,7 @@ def _execute_queries(
     )
     logging.info(
         "Executed query: %s, iteration: %d, run index: %d, run mode: %s, client"
-        " time: %.0fms, result extraction time: %.2fms [row count: %d, size: %d"
+        " time: %dms, result extraction time: %dms [row count: %d, size: %d"
         " bytes]",
         query_execution.query.name,
         query_execution.iteration_index,
@@ -263,41 +270,38 @@ def _execute_queries(
   return query_executions
 
 
+def _spreadsheet_row_from_execution(
+    qe: QueryExecution, include_sql: bool = False
+) -> dict[str, object]:
+  """Converts a QueryExecution object to a dictionary for spreadsheet export."""
+  return {
+      "query": qe.query.name,
+      "start_time": qe.start_time.isoformat(),
+      "duration_ms": qe.duration_ms,
+      "result_extraction_time_ms": qe.result_extraction_time_ms,
+      "result_row_count": qe.result_row_count,
+      "result_size_bytes": qe.result_size_bytes,
+      "iteration_index": qe.iteration_index,
+      "run_index": qe.run_index,
+      "job_id": qe.job_id,
+      "total_slot_millis": qe.total_slot_millis,
+  } | ({"sql": qe.query.sql} if include_sql else {})
+
+
 def _export_query_execution_details_to_csv(
     query_executions: Sequence[QueryExecution], output_file: str
 ):
   """Exports query executions to a CSV file."""
+  if not query_executions:
+    return
   with open(output_file, "w", newline="") as csvfile:
-    fieldnames = [
-        "query",
-        "start_time",
-        "duration_ms",
-        "result_extraction_time_ms",
-        "result_row_count",
-        "result_size_bytes",
-        "iteration_index",
-        "run_index",
-        "job_id",
-        "total_slot_millis",
-    ]
+    fieldnames = list(
+        _spreadsheet_row_from_execution(query_executions[0]).keys()
+    )
     writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-
     writer.writeheader()
     for query_execution in query_executions:
-      writer.writerow({
-          "query": query_execution.query.name,
-          "start_time": query_execution.start_time.isoformat(),
-          "duration_ms": query_execution.duration_ms,
-          "result_extraction_time_ms": (
-              query_execution.result_extraction_time_ms
-          ),
-          "result_row_count": query_execution.result_row_count,
-          "result_size_bytes": query_execution.result_size_bytes,
-          "iteration_index": query_execution.iteration_index,
-          "run_index": query_execution.run_index,
-          "job_id": query_execution.job_id,
-          "total_slot_millis": query_execution.total_slot_millis,
-      })
+      writer.writerow(_spreadsheet_row_from_execution(query_execution))
 
 
 def _select_median_runtime_query_executions(
@@ -317,7 +321,50 @@ def _select_median_runtime_query_executions(
   return median_query_executions
 
 
-def _export_reports(
+def _update_worksheet_with_executions(
+    worksheet: gspread.Worksheet,
+    query_executions: Sequence[QueryExecution],
+    include_sql: bool,
+):
+  """Updates a worksheet with query execution data."""
+  rows = [
+      _spreadsheet_row_from_execution(qe, include_sql=include_sql)
+      for qe in query_executions
+  ]
+  header = list(rows[0].keys())
+  data = [header] + [[row[col] for col in header] for row in rows]
+  worksheet.update(data)
+  worksheet.freeze(rows=1)
+
+
+def _export_to_google_sheet(
+    run_id: str,
+    query_executions: Sequence[QueryExecution],
+) -> None:
+  """Exports query executions to a new Google Sheet."""
+  try:
+    creds, _ = google.auth.default()
+    gc = gspread.authorize(creds)
+    spreadsheet = gc.create(f"BQ Bench Report: {run_id}")
+    logging.info("Exporting to Google Sheet: %s", spreadsheet.url)
+    all_ws = spreadsheet.sheet1
+    all_ws.update_title("All Query Executions")
+    _update_worksheet_with_executions(all_ws, query_executions, False)
+    median_executions = _select_median_runtime_query_executions(
+        query_executions
+    )
+    median_ws = spreadsheet.add_worksheet(
+        title="Median Runtime Query Executions", rows=1, cols=1
+    )
+    _update_worksheet_with_executions(median_ws, median_executions, True)
+  except (
+      gspread_exceptions.APIError,
+      google_auth_exceptions.DefaultCredentialsError,
+  ) as e:
+    logging.error("Failed to export to Google Sheet: %s", e)
+
+
+def _export_csv_reports(
     run_id: str,
     query_executions: Sequence[QueryExecution],
     report_dir: str,
@@ -446,6 +493,7 @@ def _process_results(
     warmup_query_executions: Sequence[QueryExecution],
     test_query_executions: Sequence[QueryExecution],
     interleave_query_iterations: bool,
+    export_to_sheets: bool,
 ):
   """Processes the results of the query executions."""
   total_warmup_time = (
@@ -463,7 +511,9 @@ def _process_results(
       median_time,
   )
   logging.info("Run ID: %s", run_id)
-  _export_reports(run_id, test_query_executions, report_dir)
+  _export_csv_reports(run_id, test_query_executions, report_dir)
+  if export_to_sheets:
+    _export_to_google_sheet(run_id, test_query_executions)
   if store_results:
     _export_query_result_data(run_id, test_query_executions, query_results_dir)
 
@@ -479,6 +529,7 @@ def _run_queries(
     test_iters: int = 1,
     interleave_query_iterations: bool = False,
     skip_reading_results: bool = False,
+    export_to_sheets: bool = False,
 ) -> None:
   """Runs queries and exports results to a CSV file."""
   store_results = bool(query_results_dir)
@@ -519,6 +570,7 @@ def _run_queries(
       warmup_query_executions,
       test_query_executions,
       interleave_query_iterations,
+      export_to_sheets,
   )
 
 
@@ -584,6 +636,11 @@ def main() -> None:
       action="store_true",
       help="If true, skip reading the results of the queries [default=false].",
   )
+  parser.add_argument(
+      "--export_to_sheets",
+      action="store_true",
+      help="If true, export the report to a new Google Sheet.",
+  )
   args = parser.parse_args()
 
   logging.basicConfig(
@@ -620,6 +677,7 @@ def main() -> None:
       args.test_iters,
       args.interleave_query_iterations,
       args.skip_reading_results,
+      args.export_to_sheets,
   )
   logging.info("Finished.")
 

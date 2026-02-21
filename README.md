@@ -52,6 +52,7 @@ Usage:
 ```bash
 bq-bench -h
 usage: bq-bench [-h] --project_id PROJECT_ID --default_dataset DEFAULT_DATASET [--query_dir QUERY_DIR] [--report_dir REPORT_DIR] [--query_results_dir QUERY_RESULTS_DIR] [--warmup_iters WARMUP_ITERS] [--test_iters TEST_ITERS] [--interleave_query_iterations]
+                [--skip_reading_results]
 
 Run BigQuery queries.
 
@@ -72,8 +73,9 @@ options:
   --test_iters TEST_ITERS
                         Number of test iterations to execute [default=1].
   --interleave_query_iterations
-                        If query iterations should be interleaved or executed in sequence; i.e. interleaved: query1-iter1, query2-iter1, ... query1-iter2, query2-iter2, ... - sequencial: query1-iter1, query1-iter2, ... query2-iter1, query2-iter2, ... [default=false (sequencial)]
-```
+                        If query iterations should be interleaved or executed in sequence; i.e. interleaved: query1-iter1, query2-iter1, ... query1-iter2, query2-iter2, ... - sequencial: query1-iter1, query1-iter2, ... query2-iter1, query2-iter2, ... [default=false (sequential)]
+  --skip_reading_results
+                        If true, skip reading the results of the queries [default=false].
 
 Example:
 ```bash

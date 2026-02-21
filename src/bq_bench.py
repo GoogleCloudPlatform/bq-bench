@@ -53,6 +53,9 @@ class QueryExecution:
   total_slot_millis: int
 
 
+MAX_PAGE_SIZE = 1000
+
+
 def _load_query_ordering(query_dir: str) -> Sequence[str] | None:
   """Loads query ordering from the "query-order.txt" file in the given directory."""
   if not os.path.exists(os.path.join(query_dir, "query-order.txt")):
@@ -112,6 +115,7 @@ def _execute_query(
     client: bigquery.Client,
     query_execution: QueryExecution,
     store_results: bool,
+    skip_reading_results: bool,
 ) -> None:
   """Executes a query and returns the results."""
   start_time = datetime.datetime.now()
@@ -137,18 +141,20 @@ def _execute_query(
             query_execution.run_mode,
             script_index,
         ),
-        page_size=1000,
+        page_size=None if skip_reading_results else MAX_PAGE_SIZE,
+        max_results=0 if skip_reading_results else None,
     )
     job_id = f"{result.project}:{result.location}.{result.job_id}"
     job_ids.append(job_id)
     total_slot_millis += result.slot_millis
-    result_extraction_start_time = time.monotonic()
-    table_data = result.to_arrow()
-    num_rows += table_data.num_rows
-    nbytes += table_data.nbytes
-    if store_results:
-      results.append(table_data)
-    result_extraction_time += time.monotonic() - result_extraction_start_time
+    if not skip_reading_results:
+      result_extraction_start_time = time.monotonic()
+      table_data = result.to_arrow()
+      num_rows += table_data.num_rows
+      nbytes += table_data.nbytes
+      if store_results:
+        results.append(table_data)
+      result_extraction_time += time.monotonic() - result_extraction_start_time
     script_index += 1
   end_time_monotonic = time.monotonic()
   query_execution.start_time = start_time
@@ -219,6 +225,7 @@ def _execute_queries(
     run_mode: str,
     store_results: bool,
     interleave_query_iterations: bool,
+    skip_reading_results: bool,
 ) -> Sequence[QueryExecution]:
   """Executes queries and returns the results."""
   query_config = bigquery.job.QueryJobConfig(
@@ -238,6 +245,7 @@ def _execute_queries(
         client,
         query_execution,
         store_results,
+        skip_reading_results,
     )
     logging.info(
         "Executed query: %s, iteration: %d, run index: %d, run mode: %s, client"
@@ -347,6 +355,7 @@ def _execute_warmup_iters(
     queries: Sequence[Query],
     warmup_iters: int,
     interleave_query_iterations: bool,
+    skip_reading_results: bool,
 ) -> Sequence[QueryExecution]:
   """Executes warmup runs."""
   query_executions = _execute_queries(
@@ -356,8 +365,9 @@ def _execute_warmup_iters(
       queries,
       warmup_iters,
       "warmup",
-      store_results=False,
-      interleave_query_iterations=interleave_query_iterations,
+      False,
+      interleave_query_iterations,
+      skip_reading_results,
   )
   return query_executions
 
@@ -370,6 +380,7 @@ def _execute_test_iters(
     test_iters: int,
     store_results: bool,
     interleave_query_iterations: bool,
+    skip_reading_results: bool,
 ) -> Sequence[QueryExecution]:
   """Executes test runs."""
   query_executions = _execute_queries(
@@ -381,6 +392,7 @@ def _execute_test_iters(
       "test",
       store_results,
       interleave_query_iterations,
+      skip_reading_results,
   )
   return query_executions
 
@@ -445,6 +457,7 @@ def _run_queries(
     warmup_iters: int = 1,
     test_iters: int = 1,
     interleave_query_iterations: bool = False,
+    skip_reading_results: bool = False,
 ) -> None:
   """Runs queries and exports results to a CSV file."""
   store_results = bool(query_results_dir)
@@ -465,6 +478,7 @@ def _run_queries(
       queries,
       warmup_iters,
       interleave_query_iterations,
+      skip_reading_results,
   )
   test_query_executions = _execute_test_iters(
       run_id,
@@ -474,6 +488,7 @@ def _run_queries(
       test_iters,
       store_results,
       interleave_query_iterations,
+      skip_reading_results,
   )
   _process_results(
       run_id,
@@ -540,7 +555,14 @@ def main() -> None:
           "If query iterations should be interleaved or executed in sequence;"
           " i.e. interleaved: query1-iter1, query2-iter1, ... query1-iter2,"
           " query2-iter2, ...  - sequencial: query1-iter1, query1-iter2, ..."
-          " query2-iter1, query2-iter2, ... [default=false (sequencial)]"
+          " query2-iter1, query2-iter2, ... [default=false (sequential)]"
+      ),
+  )
+  parser.add_argument(
+      "--skip_reading_results",
+      action="store_true",
+      help=(
+          "If true, skip reading the results of the queries [default=false]."
       ),
   )
   args = parser.parse_args()
@@ -578,6 +600,7 @@ def main() -> None:
       args.warmup_iters,
       args.test_iters,
       args.interleave_query_iterations,
+      args.skip_reading_results,
   )
   logging.info("Finished.")
 

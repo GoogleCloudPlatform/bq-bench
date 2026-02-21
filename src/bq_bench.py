@@ -263,7 +263,7 @@ def _execute_queries(
   return query_executions
 
 
-def _export_to_csv(
+def _export_query_execution_details_to_csv(
     query_executions: Sequence[QueryExecution], output_file: str
 ):
   """Exports query executions to a CSV file."""
@@ -300,7 +300,24 @@ def _export_to_csv(
       })
 
 
-def _export_report(
+def _select_median_runtime_query_executions(
+    query_executions: Sequence[QueryExecution],
+) -> Sequence[QueryExecution]:
+  """Selects the median runtime query executions for each query."""
+  query_executions_by_name = collections.defaultdict(list)
+  for qe in query_executions:
+    query_executions_by_name[qe.query.name].append(qe)
+  median_query_executions = []
+  for query_name in sorted(query_executions_by_name.keys()):
+    query_execution_list = query_executions_by_name[query_name]
+    query_execution_list.sort(key=lambda qe: qe.duration_ms)
+    median_query_executions.append(
+        query_execution_list[len(query_execution_list) // 2]
+    )
+  return median_query_executions
+
+
+def _export_reports(
     run_id: str,
     query_executions: Sequence[QueryExecution],
     report_dir: str,
@@ -309,11 +326,14 @@ def _export_report(
   run_dir = os.path.join(report_dir, run_id)
   if not os.path.exists(run_dir):
     os.makedirs(run_dir)
-  report_file = os.path.join(run_dir, "all_query_executions.csv")
   logging.info("Exporting reports to: %s", run_dir)
-  _export_to_csv(
+  _export_query_execution_details_to_csv(
       query_executions,
-      report_file,
+      os.path.join(run_dir, "all_query_executions.csv"),
+  )
+  _export_query_execution_details_to_csv(
+      _select_median_runtime_query_executions(query_executions),
+      os.path.join(run_dir, "median_runtime_query_executions.csv"),
   )
 
 
@@ -443,7 +463,7 @@ def _process_results(
       median_time,
   )
   logging.info("Run ID: %s", run_id)
-  _export_report(run_id, test_query_executions, report_dir)
+  _export_reports(run_id, test_query_executions, report_dir)
   if store_results:
     _export_query_result_data(run_id, test_query_executions, query_results_dir)
 
@@ -562,9 +582,7 @@ def main() -> None:
   parser.add_argument(
       "--skip_reading_results",
       action="store_true",
-      help=(
-          "If true, skip reading the results of the queries [default=false]."
-      ),
+      help="If true, skip reading the results of the queries [default=false].",
   )
   args = parser.parse_args()
 

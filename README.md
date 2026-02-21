@@ -76,7 +76,7 @@ options:
                         If query iterations should be interleaved or executed in sequence; i.e. interleaved: query1-iter1, query2-iter1, ... query1-iter2, query2-iter2, ... - sequencial: query1-iter1, query1-iter2, ... query2-iter1, query2-iter2, ... [default=false (sequential)]
   --skip_reading_results
                         If true, skip reading the results of the queries [default=false].
-
+```
 Example:
 ```bash
 bq-bench --project_id=<test_project> --default_dataset=bigquery-public-data.tpc_ds_10t --query_dir=./third_party/queries/tpcds --report_dir=./reports

@@ -306,10 +306,11 @@ def _export_report(
     report_dir: str,
 ) -> None:
   """Exports query executions to a CSV file."""
-  if not os.path.exists(report_dir):
-    os.makedirs(report_dir)
-  report_file = os.path.join(report_dir, f"{run_id}.csv")
-  logging.info("Exporting report to: %s", report_file)
+  run_dir = os.path.join(report_dir, run_id)
+  if not os.path.exists(run_dir):
+    os.makedirs(run_dir)
+  report_file = os.path.join(run_dir, "all_query_executions.csv")
+  logging.info("Exporting reports to: %s", run_dir)
   _export_to_csv(
       query_executions,
       report_file,

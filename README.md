@@ -44,6 +44,16 @@ Acquire new user credentials:
 gcloud auth application-default login
 ```
 
+If Google spreadsheet report export is used, the authentication should be done with the following scopes as well:
+```bash
+gcloud auth application-default login --scopes=https://www.googleapis.com/auth/cloud-platform,https://www.googleapis.com/auth/spreadsheets,https://www.googleapis.com/auth/drive
+```
+
+Also, for Google spreadsheet report export, a quota project should be configured in the following manner:
+```bash
+gcloud config set billing/quota_project <project>
+```
+
 More information on BigQuery client authentication can be found [here](https://cloud.google.com/bigquery/docs/authentication#client-libraries).
 
 ### Running
@@ -52,7 +62,7 @@ Usage:
 ```bash
 bq-bench -h
 usage: bq-bench [-h] --project_id PROJECT_ID --default_dataset DEFAULT_DATASET [--query_dir QUERY_DIR] [--report_dir REPORT_DIR] [--query_results_dir QUERY_RESULTS_DIR] [--warmup_iters WARMUP_ITERS] [--test_iters TEST_ITERS] [--interleave_query_iterations]
-                [--skip_reading_results]
+                [--skip_reading_results] [--export_to_sheets]
 
 Run BigQuery queries.
 
@@ -76,6 +86,7 @@ options:
                         If query iterations should be interleaved or executed in sequence; i.e. interleaved: query1-iter1, query2-iter1, ... query1-iter2, query2-iter2, ... - sequencial: query1-iter1, query1-iter2, ... query2-iter1, query2-iter2, ... [default=false (sequential)]
   --skip_reading_results
                         If true, skip reading the results of the queries [default=false].
+  --export_to_sheets    If true, export the report to a new Google Sheet.
 ```
 Example:
 ```bash

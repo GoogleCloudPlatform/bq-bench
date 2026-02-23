@@ -63,7 +63,7 @@ class QueryExecutionReportData:
   """Represents a query execution report data."""
 
   all_query_executions: Sequence[QueryExecution]
-  median_runtime_query_executions: Sequence[QueryExecution]
+  median_query_executions: Sequence[QueryExecution]
 
 
 MAX_PAGE_SIZE = 1000
@@ -312,17 +312,25 @@ def _export_query_execution_details_to_csv(
       writer.writerow(_spreadsheet_row_from_execution(query_execution))
 
 
-def _select_median_runtime_query_executions(
+def _select_median_query_executions(
     query_executions: Sequence[QueryExecution],
+    median_calculation_metric: str,
 ) -> Sequence[QueryExecution]:
-  """Selects the median runtime query executions for each query."""
+  """Selects the median query executions for each query."""
   query_executions_by_name = collections.defaultdict(list)
   for qe in query_executions:
     query_executions_by_name[qe.query.name].append(qe)
   median_query_executions = []
   for query_name in sorted(query_executions_by_name.keys()):
     query_execution_list = query_executions_by_name[query_name]
-    query_execution_list.sort(key=lambda qe: qe.duration_ms)
+    if median_calculation_metric == "total_slot_millis":
+      query_execution_list.sort(key=lambda qe: qe.total_slot_millis)
+    elif median_calculation_metric == "duration_ms":
+      query_execution_list.sort(key=lambda qe: qe.duration_ms)
+    else:
+      raise ValueError(
+          f"Unsupported median calculation metric: {median_calculation_metric}"
+      )
     median_query_executions.append(
         query_execution_list[len(query_execution_list) // 2]
     )
@@ -357,10 +365,10 @@ def _export_to_google_sheet(
     spreadsheet = gc.create(f"BQ Bench Report: {run_id}")
     logging.info("Exporting to Google Sheet: %s", spreadsheet.url)
     median_ws = spreadsheet.add_worksheet(
-        title="Median Runtime Query Executions", rows=1, cols=1
+        title="Median Query Executions", rows=1, cols=1
     )
     _update_worksheet_with_executions(
-        median_ws, report_data.median_runtime_query_executions, True
+        median_ws, report_data.median_query_executions, True
     )
     if export_report_verbose:
       all_ws = spreadsheet.add_worksheet(
@@ -394,8 +402,8 @@ def _export_csv_reports(
         os.path.join(run_dir, "all_query_executions.csv"),
     )
   _export_query_execution_details_to_csv(
-      report_data.median_runtime_query_executions,
-      os.path.join(run_dir, "median_runtime_query_executions.csv"),
+      report_data.median_query_executions,
+      os.path.join(run_dir, "median_query_executions.csv"),
   )
 
 
@@ -502,11 +510,12 @@ def _calculate_statistics(
 
 def _generate_report_data(
     query_executions: Sequence[QueryExecution],
+    median_calculation_metric: str,
 ) -> QueryExecutionReportData:
   return QueryExecutionReportData(
       all_query_executions=query_executions,
-      median_runtime_query_executions=_select_median_runtime_query_executions(
-          query_executions
+      median_query_executions=_select_median_query_executions(
+          query_executions, median_calculation_metric
       ),
   )
 
@@ -521,6 +530,7 @@ def _process_results(
     interleave_query_iterations: bool,
     export_to_sheets: bool,
     export_report_verbose: bool,
+    median_calculation_metric: str,
 ):
   """Processes the results of the query executions."""
   total_warmup_time = (
@@ -538,7 +548,9 @@ def _process_results(
       median_time,
   )
   logging.info("Run ID: %s", run_id)
-  report_data = _generate_report_data(test_query_executions)
+  report_data = _generate_report_data(
+      test_query_executions, median_calculation_metric
+  )
   _export_csv_reports(run_id, report_data, report_dir, export_report_verbose)
   if export_to_sheets:
     _export_to_google_sheet(run_id, report_data, export_report_verbose)
@@ -559,6 +571,7 @@ def _run_queries(
     skip_reading_results: bool = False,
     export_to_sheets: bool = False,
     export_report_verbose: bool = False,
+    median_calculation_metric: str = "total_slot_millis",
 ) -> None:
   """Runs queries and exports results to a CSV file."""
   store_results = bool(query_results_dir)
@@ -601,6 +614,7 @@ def _run_queries(
       interleave_query_iterations,
       export_to_sheets,
       export_report_verbose,
+      median_calculation_metric,
   )
 
 
@@ -679,6 +693,15 @@ def main() -> None:
           " median) [default=false]."
       ),
   )
+  parser.add_argument(
+      "--median_calculation_metric",
+      default="total_slot_millis",
+      choices=["total_slot_millis", "duration_ms"],
+      help=(
+          "Metric to use for calculating the median query executions"
+          " [default=total_slot_millis]."
+      ),
+  )
   args = parser.parse_args()
 
   logging.basicConfig(
@@ -717,6 +740,7 @@ def main() -> None:
       args.skip_reading_results,
       args.export_to_sheets,
       args.export_report_verbose,
+      args.median_calculation_metric,
   )
   logging.info("Finished.")
 

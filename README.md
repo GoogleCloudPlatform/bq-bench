@@ -63,7 +63,7 @@ Usage:
 bq-bench -h
 usage: bq-bench [-h] --project_id PROJECT_ID --default_dataset DEFAULT_DATASET [--query_dir QUERY_DIR] [--report_dir REPORT_DIR]
                 [--query_results_dir QUERY_RESULTS_DIR] [--warmup_iters WARMUP_ITERS] [--test_iters TEST_ITERS] [--interleave_query_iterations]
-                [--skip_reading_results] [--export_to_sheets] [--export_report_verbose]
+                [--skip_reading_results] [--export_to_sheets] [--export_report_verbose] [--median_calculation_metric {total_slot_millis,duration_ms}]
 
 Run BigQuery queries.
 
@@ -92,6 +92,8 @@ options:
   --export_to_sheets    If true, export the report to a new Google Sheet.
   --export_report_verbose
                         If true, export the report with all query executions (not only the median) [default=false].
+  --median_calculation_metric {total_slot_millis,duration_ms}
+                        Metric to use for calculating the median query executions [default=total_slot_millis].
 ```
 Examples:
 ```bash

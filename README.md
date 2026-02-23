@@ -56,6 +56,14 @@ gcloud config set billing/quota_project <project>
 
 More information on BigQuery client authentication can be found [here](https://cloud.google.com/bigquery/docs/authentication#client-libraries).
 
+### Execution Queries
+
+The tool is by default bundled with the TPC-DS power run queries, available at [/third_party/queries/tpcds](https://github.com/GoogleCloudPlatform/bq-bench/tree/main/third_party/queries/tpcds). A similar query directory can be created in order to provide your own set of queries. The convention being, each query to be executed contained in a file with the naming convension `<query_name>.sql`. The `query_name` part here will be shown in the reports and other logs.
+
+If there are multiple queries contains in a single file separated by a semicolon, each query will be executed separately, its statistics merged, and all the job ids will be mentioned in the single `job_id` field as a comma-separated list.
+
+In the case we want to enforce a specific query order in the execution, we can include a file named `query-order.txt`, which contains the list of `query_name`s separated by a space, in the order they need to be executed.
+
 ### Running
 
 Usage:
@@ -100,7 +108,7 @@ Examples:
 bq-bench --project_id=<test_project> --default_dataset=bigquery-public-data.tpc_ds_10t --query_dir=./third_party/queries/tpcds --report_dir=./reports
 ```
 ```bash
-bq-bench --export_to_sheets --skip_reading_results --test_iters=3 --project_id=<test_project> --default_dataset=bigquery-public-data.tpc_ds_1g --query_dir=./third_party/queries/tpcds --report_dir=./reports
+bq-bench --export_to_sheets --skip_reading_results --test_iters=3 --project_id=<test_project> --default_dataset=bigquery-public-data.tpc_ds_1g --query_dir=./third_party/queries/tpcds
 ```
 
 ### Executed Query Analysis

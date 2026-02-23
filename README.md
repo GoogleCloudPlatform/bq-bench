@@ -61,8 +61,9 @@ More information on BigQuery client authentication can be found [here](https://c
 Usage:
 ```bash
 bq-bench -h
-usage: bq-bench [-h] --project_id PROJECT_ID --default_dataset DEFAULT_DATASET [--query_dir QUERY_DIR] [--report_dir REPORT_DIR] [--query_results_dir QUERY_RESULTS_DIR] [--warmup_iters WARMUP_ITERS] [--test_iters TEST_ITERS] [--interleave_query_iterations]
-                [--skip_reading_results] [--export_to_sheets]
+usage: bq-bench [-h] --project_id PROJECT_ID --default_dataset DEFAULT_DATASET [--query_dir QUERY_DIR] [--report_dir REPORT_DIR]
+                [--query_results_dir QUERY_RESULTS_DIR] [--warmup_iters WARMUP_ITERS] [--test_iters TEST_ITERS] [--interleave_query_iterations]
+                [--skip_reading_results] [--export_to_sheets] [--export_report_verbose]
 
 Run BigQuery queries.
 
@@ -71,7 +72,8 @@ options:
   --project_id PROJECT_ID
                         BigQuery project ID to run queries in.
   --default_dataset DEFAULT_DATASET
-                        Default dataset name in the format of 'project.dataset' or excluding the project name if the dataset is in the same project as the query execution `project_id`.
+                        Default dataset name in the format of 'project.dataset' or excluding the project name if the dataset is in the same project as the query
+                        execution `project_id`.
   --query_dir QUERY_DIR
                         Directory containing SQL query files.
   --report_dir REPORT_DIR
@@ -83,14 +85,20 @@ options:
   --test_iters TEST_ITERS
                         Number of test iterations to execute [default=1].
   --interleave_query_iterations
-                        If query iterations should be interleaved or executed in sequence; i.e. interleaved: query1-iter1, query2-iter1, ... query1-iter2, query2-iter2, ... - sequencial: query1-iter1, query1-iter2, ... query2-iter1, query2-iter2, ... [default=false (sequential)]
+                        If query iterations should be interleaved or executed in sequence; i.e. interleaved: query1-iter1, query2-iter1, ... query1-iter2,
+                        query2-iter2, ... - sequencial: query1-iter1, query1-iter2, ... query2-iter1, query2-iter2, ... [default=false (sequential)]
   --skip_reading_results
                         If true, skip reading the results of the queries [default=false].
   --export_to_sheets    If true, export the report to a new Google Sheet.
+  --export_report_verbose
+                        If true, export the report with all query executions (not only the median) [default=false].
 ```
-Example:
+Examples:
 ```bash
 bq-bench --project_id=<test_project> --default_dataset=bigquery-public-data.tpc_ds_10t --query_dir=./third_party/queries/tpcds --report_dir=./reports
+```
+```bash
+bq-bench --export_to_sheets --skip_reading_results --test_iters=3 --project_id=<test_project> --default_dataset=bigquery-public-data.tpc_ds_1g --query_dir=./third_party/queries/tpcds --report_dir=./reports
 ```
 
 ### Executed Query Analysis

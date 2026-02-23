@@ -58,6 +58,14 @@ class QueryExecution:
   total_slot_millis: int
 
 
+@dataclasses.dataclass(frozen=True)
+class QueryExecutionReportData:
+  """Represents a query execution report data."""
+
+  all_query_executions: Sequence[QueryExecution]
+  median_runtime_query_executions: Sequence[QueryExecution]
+
+
 MAX_PAGE_SIZE = 1000
 
 
@@ -163,8 +171,8 @@ def _execute_query(
     script_index += 1
   end_time_monotonic = time.monotonic()
   query_execution.start_time = start_time
-  query_execution.duration_ms = (
-      round((end_time_monotonic - start_time_monotonic) * 1000.0)
+  query_execution.duration_ms = round(
+      (end_time_monotonic - start_time_monotonic) * 1000.0
   )
   query_execution.result_extraction_time_ms = round(
       result_extraction_time * 1000.0
@@ -339,7 +347,8 @@ def _update_worksheet_with_executions(
 
 def _export_to_google_sheet(
     run_id: str,
-    query_executions: Sequence[QueryExecution],
+    report_data: QueryExecutionReportData,
+    export_report_verbose: bool,
 ) -> None:
   """Exports query executions to a new Google Sheet."""
   try:
@@ -347,16 +356,20 @@ def _export_to_google_sheet(
     gc = gspread.authorize(creds)
     spreadsheet = gc.create(f"BQ Bench Report: {run_id}")
     logging.info("Exporting to Google Sheet: %s", spreadsheet.url)
-    all_ws = spreadsheet.sheet1
-    all_ws.update_title("All Query Executions")
-    _update_worksheet_with_executions(all_ws, query_executions, False)
-    median_executions = _select_median_runtime_query_executions(
-        query_executions
-    )
     median_ws = spreadsheet.add_worksheet(
         title="Median Runtime Query Executions", rows=1, cols=1
     )
-    _update_worksheet_with_executions(median_ws, median_executions, True)
+    _update_worksheet_with_executions(
+        median_ws, report_data.median_runtime_query_executions, True
+    )
+    if export_report_verbose:
+      all_ws = spreadsheet.add_worksheet(
+          title="All Query Executions", rows=1, cols=1
+      )
+      _update_worksheet_with_executions(
+          all_ws, report_data.all_query_executions, False
+      )
+    spreadsheet.del_worksheet(spreadsheet.sheet1)
   except (
       gspread_exceptions.APIError,
       google_auth_exceptions.DefaultCredentialsError,
@@ -366,20 +379,22 @@ def _export_to_google_sheet(
 
 def _export_csv_reports(
     run_id: str,
-    query_executions: Sequence[QueryExecution],
+    report_data: QueryExecutionReportData,
     report_dir: str,
+    export_report_verbose: bool,
 ) -> None:
   """Exports query executions to a CSV file."""
   run_dir = os.path.join(report_dir, run_id)
   if not os.path.exists(run_dir):
     os.makedirs(run_dir)
   logging.info("Exporting reports to: %s", run_dir)
+  if export_report_verbose:
+    _export_query_execution_details_to_csv(
+        report_data.all_query_executions,
+        os.path.join(run_dir, "all_query_executions.csv"),
+    )
   _export_query_execution_details_to_csv(
-      query_executions,
-      os.path.join(run_dir, "all_query_executions.csv"),
-  )
-  _export_query_execution_details_to_csv(
-      _select_median_runtime_query_executions(query_executions),
+      report_data.median_runtime_query_executions,
       os.path.join(run_dir, "median_runtime_query_executions.csv"),
   )
 
@@ -485,6 +500,17 @@ def _calculate_statistics(
     return (statistics.mean(iteration_sums), statistics.median(iteration_sums))
 
 
+def _generate_report_data(
+    query_executions: Sequence[QueryExecution],
+) -> QueryExecutionReportData:
+  return QueryExecutionReportData(
+      all_query_executions=query_executions,
+      median_runtime_query_executions=_select_median_runtime_query_executions(
+          query_executions
+      ),
+  )
+
+
 def _process_results(
     run_id: str,
     report_dir: str,
@@ -494,6 +520,7 @@ def _process_results(
     test_query_executions: Sequence[QueryExecution],
     interleave_query_iterations: bool,
     export_to_sheets: bool,
+    export_report_verbose: bool,
 ):
   """Processes the results of the query executions."""
   total_warmup_time = (
@@ -511,9 +538,10 @@ def _process_results(
       median_time,
   )
   logging.info("Run ID: %s", run_id)
-  _export_csv_reports(run_id, test_query_executions, report_dir)
+  report_data = _generate_report_data(test_query_executions)
+  _export_csv_reports(run_id, report_data, report_dir, export_report_verbose)
   if export_to_sheets:
-    _export_to_google_sheet(run_id, test_query_executions)
+    _export_to_google_sheet(run_id, report_data, export_report_verbose)
   if store_results:
     _export_query_result_data(run_id, test_query_executions, query_results_dir)
 
@@ -530,6 +558,7 @@ def _run_queries(
     interleave_query_iterations: bool = False,
     skip_reading_results: bool = False,
     export_to_sheets: bool = False,
+    export_report_verbose: bool = False,
 ) -> None:
   """Runs queries and exports results to a CSV file."""
   store_results = bool(query_results_dir)
@@ -571,6 +600,7 @@ def _run_queries(
       test_query_executions,
       interleave_query_iterations,
       export_to_sheets,
+      export_report_verbose,
   )
 
 
@@ -641,6 +671,14 @@ def main() -> None:
       action="store_true",
       help="If true, export the report to a new Google Sheet.",
   )
+  parser.add_argument(
+      "--export_report_verbose",
+      action="store_true",
+      help=(
+          "If true, export the report with all query executions (not only the"
+          " median) [default=false]."
+      ),
+  )
   args = parser.parse_args()
 
   logging.basicConfig(
@@ -678,6 +716,7 @@ def main() -> None:
       args.interleave_query_iterations,
       args.skip_reading_results,
       args.export_to_sheets,
+      args.export_report_verbose,
   )
   logging.info("Finished.")
 

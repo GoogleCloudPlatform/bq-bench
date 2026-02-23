@@ -285,6 +285,7 @@ def _spreadsheet_row_from_execution(
   return {
       "query": qe.query.name,
       "start_time": qe.start_time.isoformat(),
+      "total_slot_millis": qe.total_slot_millis,
       "duration_ms": qe.duration_ms,
       "result_extraction_time_ms": qe.result_extraction_time_ms,
       "result_row_count": qe.result_row_count,
@@ -292,7 +293,6 @@ def _spreadsheet_row_from_execution(
       "iteration_index": qe.iteration_index,
       "run_index": qe.run_index,
       "job_id": qe.job_id,
-      "total_slot_millis": qe.total_slot_millis,
   } | ({"sql": qe.query.sql} if include_sql else {})
 
 

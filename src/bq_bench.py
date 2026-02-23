@@ -494,18 +494,18 @@ def _calculate_statistics(
 ) -> tuple[float, float]:
   """Calculates statistics for the query executions."""
   if interleave_query_iterations:
+    iteration_durations = collections.defaultdict(list)
+    for qe in query_executions:
+      iteration_durations[qe.iteration_index].append(qe.duration_ms)
+    iteration_sums = [sum(v) for v in iteration_durations.values()]
+    return (statistics.mean(iteration_sums), statistics.median(iteration_sums))
+  else:
     query_durations = collections.defaultdict(list)
     for qe in query_executions:
       query_durations[qe.query.name].append(qe.duration_ms)
     query_means = [statistics.mean(v) for v in query_durations.values()]
     query_medians = [statistics.median(v) for v in query_durations.values()]
     return (sum(query_means), sum(query_medians))
-  else:
-    iteration_durations = collections.defaultdict(list)
-    for qe in query_executions:
-      iteration_durations[qe.iteration_index].append(qe.duration_ms)
-    iteration_sums = [sum(v) for v in iteration_durations.values()]
-    return (statistics.mean(iteration_sums), statistics.median(iteration_sums))
 
 
 def _generate_report_data(

@@ -108,7 +108,7 @@ Examples:
 bq-bench --project_id=<test_project> --default_dataset=bigquery-public-data.tpc_ds_10t --query_dir=./third_party/queries/tpcds --report_dir=./reports
 ```
 ```bash
-bq-bench --export_to_sheets --skip_reading_results --test_iters=3 --project_id=<test_project> --default_dataset=bigquery-public-data.tpc_ds_1g --query_dir=./third_party/queries/tpcds --report_dir=./reports
+bq-bench --export_to_sheets --skip_reading_results --test_iters=3 --project_id=<test_project> --default_dataset=bigquery-public-data.tpc_ds_1g --query_dir=./third_party/queries/tpcds
 ```
 
 ### Executed Query Analysis
